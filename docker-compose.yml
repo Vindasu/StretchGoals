@@ -1,0 +1,127 @@
+version: "3.6"
+volumes:
+  stretch-data:
+    external: true
+  pgadmin:
+    external: true
+services:
+  # nginx:
+  #     image: nginx:latest
+  #     container_name: webserver
+  #     restart: unless-stopped
+  #     ports:
+  #       - 80:80
+  #       - 443:443
+  #     volumes:
+  react:
+    image: node:lts-bullseye
+    command: /bin/bash run.sh
+    working_dir: /app
+    volumes:
+      - ./ghi/app:/app
+    ports:
+      - "3000:3000"
+    environment:
+      HOST_OS: ${OS}
+      NODE_ENV: development
+      HOST: "0.0.0.0"
+  postgres:
+    build:
+      context: ./relational-data
+      dockerfile: ./Dockerfile.dev
+    volumes:
+      - stretch-data:/var/lib/postgresql/data
+      - ./db:/data
+    environment:
+      - POSTGRES_MULTIPLE_DATABASES=accounts,classes,levels
+      - POSTGRES_PASSWORD=test-databases
+    ports:
+      - 15432:5432
+  accounts-api:
+    build:
+      context: ./accounts/api
+      dockerfile: ./Dockerfile.dev
+    ports:
+      - "8100:8000"
+    volumes:
+      - ./accounts/api:/app
+    depends_on:
+      - postgres
+    environment:
+      DATABASE_URL: postgresql://accounts:password@postgres:5432/accounts
+      WAIT_HOSTS: postgres:5432
+      WAIT_TIMEOUT: 240
+      PEXELS_API_KEY: ${PEXELS_API_KEY}
+      DJWTO_SIGNING_KEY: ${DJWTO_SIGNING_KEY}
+  classes-api:
+    build:
+      context: ./classes/api
+      dockerfile: ./Dockerfile.dev
+    ports:
+      - "8080:8000"
+    volumes:
+      - ./classes/api:/app
+    depends_on:
+      - postgres
+    environment:
+      DATABASE_URL: postgresql://classes:password@postgres:5432/classes
+      WAIT_HOSTS: postgres:5432
+      WAIT_TIMEOUT: 240
+      PEXELS_API_KEY: ${PEXELS_API_KEY}
+      DJWTO_SIGNING_KEY: ${DJWTO_SIGNING_KEY}
+  levels-api:
+    build:
+      context: ./levels/api
+      dockerfile: ./Dockerfile.dev
+    ports:
+      - "8090:8000"
+    volumes:
+      - ./levels/api:/app
+    depends_on:
+      - postgres
+    environment:
+      DATABASE_URL: postgresql://levels:password@postgres:5432/levels
+      WAIT_HOSTS: postgres:5432
+      WAIT_TIMEOUT: 240
+      PEXELS_API_KEY: ${PEXELS_API_KEY}
+      DJWTO_SIGNING_KEY: ${DJWTO_SIGNING_KEY}
+  pgadmin:
+    image: dpage/pgadmin4
+    volumes:
+        - pgadmin:/var/lib/pgadmin
+    ports:
+        - "8060:80"
+    environment:
+        PGADMIN_DEFAULT_EMAIL: 'stretchgoalz@gmail.com'
+        PGADMIN_DEFAULT_PASSWORD: 'password'
+  levels-poller:
+    build:
+      context: ./levels/poll
+      dockerfile: ./Dockerfile.dev
+    volumes:
+      - ./levels/poll:/app
+      - ./levels/api/levels_project:/app/levels_project
+      - ./levels/api/levels_rest:/app/levels_rest
+    depends_on:
+      - postgres
+      - levels-api
+    environment:
+      DATABASE_URL: postgresql://levels:password@postgres:5432/levels
+      WAIT_HOSTS: postgres:5432,levels-api:8000
+      WAIT_TIMEOUT: 240
+  classes-poller:
+    build:
+      context: ./classes/poll
+      dockerfile: ./Dockerfile.dev
+    volumes:
+      - ./classes/poll:/app
+      - ./classes/api/classes_project:/app/classes_project
+      - ./classes/api/classes_rest:/app/classes_rest
+    depends_on:
+      - postgres
+      - classes-api
+    environment:
+      DATABASE_URL: postgresql://classes:password@postgres:5432/classes
+      WAIT_HOSTS: postgres:5432,classes-api:8000
+      WAIT_TIMEOUT: 240
+
